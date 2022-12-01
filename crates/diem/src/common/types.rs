@@ -1,25 +1,49 @@
 // Copyright (c) The Diem Core Contributors
 // SPDX-License-Identifier: Apache-2.0
-
-use crate::common::utils::to_common_result;
+use crate::common::utils::{to_common_result, to_common_success_result};
 use async_trait::async_trait;
-use serde::Serialize;
 use thiserror::Error;
+use std::{
+    collections::BTreeMap,
+    fmt::{Debug, Display, Formatter},
+    fs::OpenOptions,
+    path::{Path, PathBuf},
+    str::FromStr,
+    time::Instant,
+    env
+};
 
-/// General trait for all CLI commands
+use serde::{de::DeserializeOwned, Serialize, Deserialize};
+use serde_yaml::{self};
+
+// A common trait for all CLI commands to have consistent outputs
 #[async_trait]
-pub trait Command<T: Serialize + Send>: Sized + Send {
+pub trait CliCommand<T: Serialize + Send>: Sized + Send {
     /// Returns a name for logging purposes
     fn command_name(&self) -> &'static str;
 
-    /// Returns a result specific to the command executed
-    async fn execute(self) -> Result<T, CliError>;
+    /// Executes the command, returning a command specific type
+    async fn execute(self) -> CliTypedResult<T>;
 
-    /// Returns command execution result as common JSON output type
-    async fn execute_serialized(self) -> Result<String, String> {
+    /// Executes the command, and serializes it to the common JSON output type
+    async fn execute_serialized(self) -> CliResult {
         to_common_result(self.execute().await).await
+    
     }
+
+    /// Executes the command, and throws away Ok(result) for the string Success
+    async fn execute_serialized_success(self) -> CliResult {
+        to_common_success_result(self.execute().await).await
+    }
+    
+    
 }
+
+// A common result to be returned to users
+pub type CliResult = Result<String, String>;
+
+// A common result to remove need for typing `Result<T, CliError>`
+pub type CliTypedResult<T> = Result<T, CliError>;
 
 // CLI Errors for reporting through telemetry and outputs
 #[derive(Debug, Error)]
@@ -44,3 +68,7 @@ impl CliError {
         }
     }
 }
+
+
+
+

@@ -5,7 +5,19 @@
 
 // #![forbid(unsafe_code)]
 
-// use diem::Tool;
-fn main() {
-    // Tool::parse().execute().await;
+use diem::Tool;
+use clap::Parser;
+use std::process::exit;
+
+#[tokio::main]
+async fn main() {
+    let result = Tool::parse().execute().await;
+
+    match result {
+        Ok(inner) => println!("{}", inner),
+        Err(inner) => {
+            println!("{}", inner);
+            exit(1);
+        }
+    }
 }

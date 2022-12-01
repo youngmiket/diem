@@ -1030,7 +1030,7 @@ dependencies = [
  "seed-peer-generator",
  "serde",
  "serde_json",
- "serde_yaml",
+ "serde_yaml 0.8.17",
  "state-sync",
  "structopt 0.3.21",
  "termion",
@@ -1563,12 +1563,24 @@ dependencies = [
 name = "diem"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-trait",
  "clap 4.0.26",
+ "diem-client",
+ "diem-crypto",
+ "diem-logger",
+ "diem-types",
+ "diem-wallet",
  "diem-workspace-hack",
+ "generate-key",
+ "hex",
+ "reqwest",
  "serde",
  "serde_json",
+ "serde_yaml 0.9.14",
+ "structopt 0.3.21",
  "thiserror",
+ "tokio",
 ]
 
 [[package]]
@@ -1642,7 +1654,7 @@ dependencies = [
  "mirai-annotations",
  "rand 0.8.3",
  "serde",
- "serde_yaml",
+ "serde_yaml 0.8.17",
  "short-hex-str",
  "thiserror",
 ]
@@ -1707,7 +1719,7 @@ dependencies = [
  "serde",
  "serde-generate",
  "serde-reflection",
- "serde_yaml",
+ "serde_yaml 0.8.17",
  "structopt 0.3.21",
  "tempfile",
 ]
@@ -2123,7 +2135,7 @@ dependencies = [
  "diem-workspace-hack",
  "hex",
  "serde",
- "serde_yaml",
+ "serde_yaml 0.8.17",
  "structopt 0.3.21",
  "thiserror",
  "toml",
@@ -2279,7 +2291,7 @@ dependencies = [
  "rand 0.8.3",
  "serde",
  "serde_json",
- "serde_yaml",
+ "serde_yaml 0.8.17",
  "structopt 0.3.21",
  "thiserror",
  "tokio",
@@ -3557,7 +3569,7 @@ dependencies = [
  "rand 0.8.3",
  "serde",
  "serde-reflection",
- "serde_yaml",
+ "serde_yaml 0.8.17",
  "structopt 0.3.21",
 ]
 
@@ -3813,9 +3825,9 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
-version = "0.11.2"
+version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab5ef0d4909ef3724cc8cce6ccc8572c5c817592e9285f5464f8e86f8bd3726e"
+checksum = "8a9ee70c43aaf417c914396645a0fa852624801b24ebb7ae78fe8272889ac888"
 
 [[package]]
 name = "headers"
@@ -4076,12 +4088,12 @@ dependencies = [
 
 [[package]]
 name = "indexmap"
-version = "1.7.0"
+version = "1.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc633605454125dec4b66843673f01c7df2b89479b32e0ed634e43a91cff62a5"
+checksum = "1885e79c1fc4b10f0e172c475f458b7f7b93061064d98c3293e98c5ba0c8b399"
 dependencies = [
  "autocfg",
- "hashbrown 0.11.2",
+ "hashbrown 0.12.3",
 ]
 
 [[package]]
@@ -4373,7 +4385,7 @@ dependencies = [
  "pin-project",
  "serde",
  "serde_json",
- "serde_yaml",
+ "serde_yaml 0.8.17",
  "static_assertions",
  "thiserror",
  "tokio",
@@ -4739,7 +4751,7 @@ dependencies = [
  "read-write-set",
  "resource-viewer",
  "serde",
- "serde_yaml",
+ "serde_yaml 0.8.17",
  "structopt 0.3.21",
  "walkdir",
 ]
@@ -5308,7 +5320,7 @@ dependencies = [
  "network",
  "once_cell",
  "rand 0.8.3",
- "serde_yaml",
+ "serde_yaml 0.8.17",
  "short-hex-str",
  "subscription-service",
  "tokio",
@@ -6933,7 +6945,7 @@ dependencies = [
  "diem-workspace-hack",
  "hex",
  "rand 0.8.3",
- "serde_yaml",
+ "serde_yaml 0.8.17",
  "structopt 0.3.21",
  "thiserror",
 ]
@@ -6995,7 +7007,7 @@ dependencies = [
  "serde",
  "serde-reflection",
  "serde_bytes",
- "serde_yaml",
+ "serde_yaml 0.8.17",
  "structopt 0.3.21",
  "textwrap 0.13.4",
 ]
@@ -7117,6 +7129,19 @@ dependencies = [
  "linked-hash-map",
  "serde",
  "yaml-rust",
+]
+
+[[package]]
+name = "serde_yaml"
+version = "0.9.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d232d893b10de3eb7258ff01974d6ee20663d8e833263c99409d4b13a0209da"
+dependencies = [
+ "indexmap",
+ "itoa 1.0.3",
+ "ryu",
+ "serde",
+ "unsafe-libyaml",
 ]
 
 [[package]]
@@ -7381,7 +7406,7 @@ dependencies = [
  "regex",
  "rust_decimal",
  "rusty-fork",
- "serde_yaml",
+ "serde_yaml 0.8.17",
  "tokio",
 ]
 
@@ -8294,7 +8319,7 @@ dependencies = [
  "regex",
  "serde-generate",
  "serde-reflection",
- "serde_yaml",
+ "serde_yaml 0.8.17",
  "structopt 0.3.21",
  "tempfile",
  "textwrap 0.13.4",
@@ -8532,6 +8557,12 @@ dependencies = [
  "generic-array 0.14.4",
  "subtle",
 ]
+
+[[package]]
+name = "unsafe-libyaml"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c1e5fa573d8ac5f1a856f8d7be41d390ee973daf97c806b2c1a465e4e1406e68"
 
 [[package]]
 name = "untrusted"
