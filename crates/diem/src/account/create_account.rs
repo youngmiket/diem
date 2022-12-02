@@ -8,7 +8,7 @@ use crate::common::types:: {
 };
 
 use crate::{
-    client_proxy::ClientProxy,
+    client_proxy::ClientProxy, client_proxy::GenerateKeypairResponse, client_proxy::generate_key_pair
 };
 use structopt::StructOpt;
 
@@ -19,6 +19,7 @@ use serde_json::json;
 use std::{
     fmt::{Display, Formatter},
     str::FromStr,
+    fs::File,
 };
 use diem_types::{chain_id::ChainId, waypoint::Waypoint};
 
@@ -115,17 +116,27 @@ impl CliCommand<String> for CreateAccount {
         
         let mut client = default_proxy().await;
 
-        match client.create_next_account(true).await {
-            Ok(account_data) => println!(
-                "Created/retrieved local account #{} address {}",
-                account_data.index,
-                hex::encode(account_data.address)
-            ),
-            Err(e) => println!("Error creating local account {}", e),
-        }
+        // match client.create_next_account(true).await {
+        //     Ok(account_data) => println!(
+        //         "Created/retrieved local account #{} address {}",
+        //         account_data.index,
+        //         hex::encode(account_data.address)
+        //     ),
+        //     Err(e) => println!("Error creating local account {}", e),
+        // }
+
+        let keypair = generate_key_pair(None);
+
+        let serialized = serde_json::to_string_pretty(&keypair).unwrap();
+        println!("key_pair = {}", serialized);
+
+        let file = File::create("key_pair.json").unwrap();
+
+        let res = serde_json::to_writer_pretty(&file, &keypair).map_err(|err| {
+            println!("{}", err);
+        }).unwrap();
         
 
-        println!("Created account...");
         Ok("account".to_string())
     }
 }

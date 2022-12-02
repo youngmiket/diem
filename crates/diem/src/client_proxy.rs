@@ -1,21 +1,25 @@
 // Copyright (c) The Diem Core Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+
+
+use crate::account::{
+    AccountData, AccountStatus
+};
 use diem_types::{
     chain_id::ChainId, ledger_info::LedgerInfo, on_chain_config::ValidatorSet,
     waypoint::Waypoint,
 };
 
 use crate::{
-    AccountData,
     diem_client::DiemClient,
-    AccountStatus
+    
 };
 
 use anyhow::Result;
 use diem_crypto::{
     ed25519::{Ed25519PrivateKey, Ed25519PublicKey, Ed25519Signature},
-    test_utils::KeyPair,
+    test_utils::KeyPair, Uniform, ValidCryptoMaterialStringExt,
 };
 use diem_client::{
     stream::{StreamingClient, StreamingClientConfig},
@@ -55,7 +59,13 @@ use std::{
     process::Command,
     str::{self, FromStr},
 };
+use serde::{Serialize, Deserialize};
+use rand::{prelude::StdRng, SeedableRng};
+
+use swiss_knife::helpers;
+
 const CLIENT_WALLET_MNEMONIC_FILE: &str = "client.mnemonic";
+
 
 
 /// Account data is stored in a map and referenced by an index.
@@ -273,4 +283,45 @@ impl ClientProxy {
             index: self.accounts.len() - 1,
         }
     }
+
+    
 }
+
+
+
+//moved from swiss knife
+#[derive(Deserialize, Serialize)]
+// #[serde(rename_all = "snake_case")]
+pub struct GenerateKeypairResponse {
+    pub private_key: String,
+    pub public_key: String,
+    pub diem_auth_key: String,
+    pub diem_account_address: String,
+}
+
+pub fn generate_key_pair(seed: Option<u64>) -> GenerateKeypairResponse {
+    let mut rng = StdRng::seed_from_u64(seed.unwrap_or_else(rand::random));
+    let keypair: KeyPair<Ed25519PrivateKey, Ed25519PublicKey> = Ed25519PrivateKey::generate(&mut rng).into();
+        
+    let diem_auth_key = AuthenticationKey::ed25519(&keypair.public_key);
+    let diem_account_address: String = diem_auth_key.derived_address().to_string();
+    let diem_auth_key: String = diem_auth_key.to_string();
+    GenerateKeypairResponse {
+        private_key: keypair
+            .private_key.to_encoded_string()
+            .map_err(|err| {
+                helpers::exit_with_error(format!("Failed to encode private key : {}", err))
+            })
+            .unwrap(),
+        public_key: keypair
+            .public_key
+            .to_encoded_string()
+            .map_err(|err| {
+                helpers::exit_with_error(format!("Failed to encode public key : {}", err))
+            })
+            .unwrap(),
+        diem_auth_key,
+        diem_account_address,
+    }
+}
+
