@@ -25,24 +25,14 @@ pub mod create_account;
 #[derive(Debug, Subcommand)]
 pub enum AccountTool {
     Create(create_account::CreateAccount),
-    // CreateResourceAccount(create_resource_account::CreateResourceAccount),
-    // FundWithFaucet(fund::FundWithFaucet),
-    // List(list::ListAccount),
-    // LookupAddress(key_rotation::LookupAddress),
-    // RotateKey(key_rotation::RotateKey),
-    // Transfer(transfer::TransferCoins),
+    
 }
 
 impl AccountTool {
     pub async fn execute(self) -> CliResult {
         match self {
             AccountTool::Create(tool) => tool.execute_serialized().await,
-            // AccountTool::CreateResourceAccount(tool) => tool.execute_serialized().await,
-            // AccountTool::FundWithFaucet(tool) => tool.execute_serialized().await,
-            // AccountTool::List(tool) => tool.execute_serialized().await,
-            // AccountTool::LookupAddress(tool) => tool.execute_serialized().await,
-            // AccountTool::RotateKey(tool) => tool.execute_serialized().await,
-            // AccountTool::Transfer(tool) => tool.execute_serialized().await,
+            
         }
     }
 }

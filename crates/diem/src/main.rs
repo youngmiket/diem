@@ -14,9 +14,9 @@ async fn main() {
     let result = Tool::parse().execute().await;
 
     match result {
-        Ok(inner) => println!("{}", inner),
-        Err(inner) => {
-            println!("{}", inner);
+        Ok(res) => println!("{}", res),
+        Err(res) => {
+            println!("{}", res);
             exit(1);
         }
     }
