@@ -41,6 +41,7 @@ impl Command<String> for MintAccount {
         //default for testing
         let mut client = default_proxy().await;
 
+        //verify authentication key
         let (receiver, receiver_auth_key_opt) =
             client.get_account_address_from_parameter(&self.account).unwrap();
         let receiver_auth_key = receiver_auth_key_opt.ok_or_else(|| {
@@ -49,6 +50,6 @@ impl Command<String> for MintAccount {
 
         client.mint_coins_with_faucet_service(receiver_auth_key, self.amount, self.currency).await;
         
-        Ok("test".to_string())
+        Ok("Minted coins successfully".to_string())
     }
 }

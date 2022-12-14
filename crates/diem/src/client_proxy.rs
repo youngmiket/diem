@@ -461,32 +461,35 @@ impl ClientProxy {
         if is_authentication_key(para) {
             let auth_key = ClientProxy::authentication_key_from_string(para)?;
             Ok((auth_key.derived_address(), Some(auth_key)))
-        } else if is_address(para) {
+        } else  {
             Ok((ClientProxy::address_from_strings(para)?, None))
-        } else {
-            let account_ref_id = para.parse::<usize>().map_err(|error| {
-                format_parse_data_error(
-                    "account_reference_id/account_address",
-                    InputType::Usize,
-                    para,
-                    error,
-                )
-            })?;
-            let account_data = self.accounts.get(account_ref_id).ok_or_else(|| {
-                format_err!(
-                    "Unable to find account by account reference id: {}, to see all existing \
-                     accounts, run: 'account list'",
-                    account_ref_id
-                )
-            })?;
-            Ok((
-                account_data.address,
-                account_data
-                    .authentication_key
-                    .clone()
-                    .and_then(|bytes| AuthenticationKey::try_from(bytes).ok()),
-            ))
+
         }
+        
+        // } else {
+        //     let account_ref_id = para.parse::<usize>().map_err(|error| {
+        //         format_parse_data_error(
+        //             "account_reference_id/account_address",
+        //             InputType::Usize,
+        //             para,
+        //             error,
+        //         )
+        //     })?;
+        //     let account_data = self.accounts.get(account_ref_id).ok_or_else(|| {
+        //         format_err!(
+        //             "Unable to find account by account reference id: {}, to see all existing \
+        //              accounts, run: 'account list'",
+        //             account_ref_id
+        //         )
+        //     })?;
+        //     Ok((
+        //         account_data.address,
+        //         account_data
+        //             .authentication_key
+        //             .clone()
+        //             .and_then(|bytes| AuthenticationKey::try_from(bytes).ok()),
+        //     ))
+        // }
     }
     fn authentication_key_from_string(data: &str) -> Result<AuthenticationKey> {
         let bytes_vec: Vec<u8> = hex::decode(data.parse::<String>()?)?;
@@ -702,20 +705,4 @@ pub fn is_authentication_key(data: &str) -> bool {
 /// Check whether the input string is a valid diem address.
 pub fn is_address(data: &str) -> bool {
     hex::decode(data).map_or(false, |vec| vec.len() == AccountAddress::LENGTH)
-}
-
-fn format_parse_data_error<T: std::fmt::Debug>(
-    field: &str,
-    input_type: InputType,
-    value: &str,
-    error: T,
-) -> Error {
-    format_err!(
-        "Unable to parse input for {} - \
-         please enter an {:?}.  Input was: {}, error: {:?}",
-        field,
-        input_type,
-        value,
-        error
-    )
 }

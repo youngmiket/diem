@@ -95,9 +95,4 @@ impl DiemClient {
             .map(Response::into_inner)
     }
 
-    
-
-    
-
-
 }
