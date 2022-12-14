@@ -9,7 +9,7 @@ use crate::{
     diagnostics::{Diagnostic, Diagnostics},
     parser::{ast::*, lexer::*},
     shared::*,
-    FileCommentMap, MatchedFileCommentMap,
+    MatchedFileCommentMap,
 };
 
 // In the informal grammar comments in this file, Comma<T> is shorthand for:
@@ -1847,8 +1847,7 @@ fn parse_constant_decl(
 
 // Parse an address block:
 //      AddressBlock =
-//          "address" <LeadingNameAccess> (= <AddressBytes>)?
-//              ("{" (<Attributes> <Module>)* "}" | ";")
+//          "address" <LeadingNameAccess> "{" (<Attributes> <Module>)* "}"
 //
 // Note that "address" is not a token.
 fn parse_address_block(
@@ -1877,19 +1876,7 @@ fn parse_address_block(
     let end_loc = tokens.previous_end_loc();
     let loc = make_loc(tokens.file_name(), start_loc, end_loc);
 
-    let addr_value = match tokens.peek() {
-        Tok::Equal => {
-            tokens.advance()?;
-            Some(parse_address_bytes(tokens)?)
-        }
-        _ => None,
-    };
-
     let modules = match tokens.peek() {
-        Tok::Semicolon => {
-            tokens.advance()?;
-            vec![]
-        }
         Tok::LBrace => {
             tokens.advance()?;
             let mut modules = vec![];
@@ -1900,14 +1887,13 @@ fn parse_address_block(
             consume_token(tokens, Tok::RBrace)?;
             modules
         }
-        _ => return Err(unexpected_token_error(tokens, "one of `;` or `{{`")),
+        _ => return Err(unexpected_token_error(tokens, "'{'")),
     };
 
     Ok(AddressDefinition {
         attributes,
         loc,
         addr,
-        addr_value,
         modules,
     })
 }
@@ -2350,29 +2336,35 @@ fn parse_spec_block_member(tokens: &mut Lexer) -> Result<SpecBlockMember, Diagno
 //      | "emits" <ConditionProperties> <Exp> "to" <Exp> [If <Exp>] ";"
 fn parse_condition(tokens: &mut Lexer) -> Result<SpecBlockMember, Diagnostic> {
     let start_loc = tokens.start_loc();
-    let kind = match tokens.content() {
-        "assert" => SpecConditionKind::Assert,
-        "assume" => SpecConditionKind::Assume,
-        "decreases" => SpecConditionKind::Decreases,
-        "aborts_if" => SpecConditionKind::AbortsIf,
-        "aborts_with" => SpecConditionKind::AbortsWith,
-        "succeeds_if" => SpecConditionKind::SucceedsIf,
-        "modifies" => SpecConditionKind::Modifies,
-        "emits" => SpecConditionKind::Emits,
-        "ensures" => SpecConditionKind::Ensures,
-        "requires" => SpecConditionKind::Requires,
+    let kind_ = match tokens.content() {
+        "assert" => SpecConditionKind_::Assert,
+        "assume" => SpecConditionKind_::Assume,
+        "decreases" => SpecConditionKind_::Decreases,
+        "aborts_if" => SpecConditionKind_::AbortsIf,
+        "aborts_with" => SpecConditionKind_::AbortsWith,
+        "succeeds_if" => SpecConditionKind_::SucceedsIf,
+        "modifies" => SpecConditionKind_::Modifies,
+        "emits" => SpecConditionKind_::Emits,
+        "ensures" => SpecConditionKind_::Ensures,
+        "requires" => SpecConditionKind_::Requires,
         _ => unreachable!(),
     };
     tokens.advance()?;
+    let kind = spanned(
+        tokens.file_name(),
+        start_loc,
+        tokens.previous_end_loc(),
+        kind_.clone(),
+    );
     let properties = parse_condition_properties(tokens)?;
-    let exp = if kind == SpecConditionKind::AbortsWith || kind == SpecConditionKind::Modifies {
+    let exp = if kind_ == SpecConditionKind_::AbortsWith || kind_ == SpecConditionKind_::Modifies {
         // Use a dummy expression as a placeholder for this field.
         let loc = make_loc(tokens.file_name(), start_loc, start_loc + 1);
         sp(loc, Exp_::Value(sp(loc, Value_::Bool(false))))
     } else {
         parse_exp(tokens)?
     };
-    let additional_exps = if kind == SpecConditionKind::AbortsIf
+    let additional_exps = if kind_ == SpecConditionKind_::AbortsIf
         && tokens.peek() == Tok::IdentifierValue
         && tokens.content() == "with"
     {
@@ -2380,7 +2372,7 @@ fn parse_condition(tokens: &mut Lexer) -> Result<SpecBlockMember, Diagnostic> {
         let codes = vec![parse_exp(tokens)?];
         consume_token(tokens, Tok::Semicolon)?;
         codes
-    } else if kind == SpecConditionKind::AbortsWith || kind == SpecConditionKind::Modifies {
+    } else if kind_ == SpecConditionKind_::AbortsWith || kind_ == SpecConditionKind_::Modifies {
         parse_comma_list_after_start(
             tokens,
             tokens.start_loc(),
@@ -2389,7 +2381,7 @@ fn parse_condition(tokens: &mut Lexer) -> Result<SpecBlockMember, Diagnostic> {
             parse_exp,
             "an aborts code or modifies target",
         )?
-    } else if kind == SpecConditionKind::Emits {
+    } else if kind_ == SpecConditionKind_::Emits {
         consume_identifier(tokens, "to")?;
         let mut additional_exps = vec![parse_exp(tokens)?];
         if match_token(tokens, Tok::If)? {
@@ -2408,7 +2400,6 @@ fn parse_condition(tokens: &mut Lexer) -> Result<SpecBlockMember, Diagnostic> {
         end_loc,
         SpecBlockMember_::Condition {
             kind,
-            type_parameters: vec![],
             properties,
             exp,
             additional_exps,
@@ -2439,6 +2430,12 @@ fn parse_axiom(tokens: &mut Lexer) -> Result<SpecBlockMember, Diagnostic> {
     let start_loc = tokens.start_loc();
     consume_identifier(tokens, "axiom")?;
     let type_parameters = parse_optional_type_parameters(tokens)?;
+    let kind = spanned(
+        tokens.file_name(),
+        start_loc,
+        tokens.previous_end_loc(),
+        SpecConditionKind_::Axiom(type_parameters),
+    );
     let properties = parse_condition_properties(tokens)?;
     let exp = parse_exp(tokens)?;
     consume_token(tokens, Tok::Semicolon)?;
@@ -2447,8 +2444,7 @@ fn parse_axiom(tokens: &mut Lexer) -> Result<SpecBlockMember, Diagnostic> {
         start_loc,
         tokens.previous_end_loc(),
         SpecBlockMember_::Condition {
-            kind: SpecConditionKind::Axiom,
-            type_parameters,
+            kind,
             properties,
             exp,
             additional_exps: vec![],
@@ -2462,13 +2458,19 @@ fn parse_invariant(tokens: &mut Lexer) -> Result<SpecBlockMember, Diagnostic> {
     let start_loc = tokens.start_loc();
     consume_token(tokens, Tok::Invariant)?;
     let type_parameters = parse_optional_type_parameters(tokens)?;
-    let kind = match tokens.peek() {
+    let kind_ = match tokens.peek() {
         Tok::IdentifierValue if tokens.content() == "update" => {
             tokens.advance()?;
-            SpecConditionKind::InvariantUpdate
+            SpecConditionKind_::InvariantUpdate(type_parameters)
         }
-        _ => SpecConditionKind::Invariant,
+        _ => SpecConditionKind_::Invariant(type_parameters),
     };
+    let kind = spanned(
+        tokens.file_name(),
+        start_loc,
+        tokens.previous_end_loc(),
+        kind_,
+    );
     let properties = parse_condition_properties(tokens)?;
     let exp = parse_exp(tokens)?;
     consume_token(tokens, Tok::Semicolon)?;
@@ -2478,7 +2480,6 @@ fn parse_invariant(tokens: &mut Lexer) -> Result<SpecBlockMember, Diagnostic> {
         tokens.previous_end_loc(),
         SpecBlockMember_::Condition {
             kind,
-            type_parameters,
             properties,
             exp,
             additional_exps: vec![],
@@ -2843,9 +2844,8 @@ fn parse_file(tokens: &mut Lexer) -> Result<Vec<Definition>, Diagnostic> {
 pub fn parse_file_string(
     file: Symbol,
     input: &str,
-    comment_map: FileCommentMap,
 ) -> Result<(Vec<Definition>, MatchedFileCommentMap), Diagnostics> {
-    let mut tokens = Lexer::new(input, file, comment_map);
+    let mut tokens = Lexer::new(input, file);
     match tokens.advance() {
         Err(err) => Err(Diagnostics::from(vec![err])),
         Ok(..) => Ok(()),

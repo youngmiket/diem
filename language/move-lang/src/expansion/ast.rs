@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    diag,
-    diagnostics::Diagnostic,
     parser::ast::{
         Ability, Ability_, BinOp, ConstantName, Field, FunctionName, ModuleName, QuantKind,
-        SpecApplyPattern, SpecConditionKind, StructName, UnaryOp, Var, Visibility,
+        SpecApplyPattern, StructName, UnaryOp, Var, Visibility,
     },
     shared::{ast_debug::*, unique_map::UniqueMap, unique_set::UniqueSet, *},
 };
@@ -24,7 +22,6 @@ use std::{
 #[derive(Debug, Clone)]
 pub struct Program {
     // Map of declared named addresses, and their values if specified
-    pub addresses: UniqueMap<Name, Option<Spanned<AddressBytes>>>,
     pub modules: UniqueMap<ModuleIdent, ModuleDefinition>,
     pub scripts: BTreeMap<String, Script>,
 }
@@ -222,7 +219,6 @@ pub type SpecBlockTarget = Spanned<SpecBlockTarget_>;
 pub enum SpecBlockMember_ {
     Condition {
         kind: SpecConditionKind,
-        type_parameters: Vec<(Name, AbilitySet)>,
         properties: Vec<PragmaProperty>,
         exp: Exp,
         additional_exps: Vec<Exp>,
@@ -259,7 +255,27 @@ pub enum SpecBlockMember_ {
 }
 pub type SpecBlockMember = Spanned<SpecBlockMember_>;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(PartialEq, Clone, Debug)]
+#[allow(clippy::derive_partial_eq_without_eq)]
+pub enum SpecConditionKind_ {
+    Assert,
+    Assume,
+    Decreases,
+    AbortsIf,
+    AbortsWith,
+    SucceedsIf,
+    Modifies,
+    Emits,
+    Ensures,
+    Requires,
+    Invariant(Vec<(Name, AbilitySet)>),
+    InvariantUpdate(Vec<(Name, AbilitySet)>),
+    Axiom(Vec<(Name, AbilitySet)>),
+}
+pub type SpecConditionKind = Spanned<SpecConditionKind_>;
+
+#[derive(Debug, Clone, PartialEq)]
+#[allow(clippy::derive_partial_eq_without_eq)]
 pub struct PragmaProperty_ {
     pub name: Name,
     pub value: Option<PragmaValue>,
@@ -443,36 +459,15 @@ impl Address {
         Self::Anonymous(sp(loc, AddressBytes::new(address)))
     }
 
-    pub fn into_addr_bytes_opt(
-        self,
-        addresses: &UniqueMap<Name, AddressBytes>,
-    ) -> Option<AddressBytes> {
+    pub fn into_addr_bytes(self, addresses: &BTreeMap<String, AddressBytes>) -> AddressBytes {
         match self {
-            Self::Anonymous(sp!(_, bytes)) => Some(bytes),
-            Self::Named(n) => addresses.get(&n).cloned(),
-        }
-    }
-
-    pub fn into_addr_bytes(
-        self,
-        addresses: &UniqueMap<Name, AddressBytes>,
-        loc: Loc,
-        case: &str,
-    ) -> Result<AddressBytes, Diagnostic> {
-        match self {
-            Self::Anonymous(sp!(_, bytes)) => Ok(bytes),
-            Self::Named(n) => match addresses.get(&n) {
-                Some(a) => Ok(*a),
-                None => {
-                    let unable_msg = format!("Unable to fully compile and resolve {}", case);
-                    let addr_msg = format!("No value specified for address '{}'", n);
-                    Err(diag!(
-                        BytecodeGeneration::UnassignedAddress,
-                        (loc, unable_msg),
-                        (n.loc, addr_msg)
-                    ))
-                }
-            },
+            Self::Anonymous(sp!(_, bytes)) => bytes,
+            Self::Named(n) => *addresses.get(&n.value).unwrap_or_else(|| {
+                panic!(
+                    "ICE no value found for address '{}' after expansion",
+                    n.value
+                )
+            }),
         }
     }
 }
@@ -712,19 +707,7 @@ impl fmt::Display for SpecId {
 
 impl AstDebug for Program {
     fn ast_debug(&self, w: &mut AstWriter) {
-        let Program {
-            addresses,
-            modules,
-            scripts,
-        } = self;
-        for (_, addr, bytes) in addresses {
-            w.write(&format!("address {}", addr));
-            if let Some(bytes) = bytes {
-                w.write(&format!(" = {}", bytes))
-            }
-            w.writeln(";");
-        }
-
+        let Program { modules, scripts } = self;
         for (m, mdef) in modules.key_cloned_iter() {
             w.write(&format!("module {}", m));
             w.block(|w| mdef.ast_debug(w));
@@ -948,18 +931,49 @@ impl AstDebug for SpecBlockTarget_ {
     }
 }
 
+impl AstDebug for SpecConditionKind_ {
+    fn ast_debug(&self, w: &mut AstWriter) {
+        use SpecConditionKind_::*;
+        match self {
+            Assert => w.write("assert "),
+            Assume => w.write("assume "),
+            Decreases => w.write("decreases "),
+            AbortsIf => w.write("aborts_if "),
+            AbortsWith => w.write("aborts_with "),
+            SucceedsIf => w.write("succeeds_if "),
+            Modifies => w.write("modifies "),
+            Emits => w.write("emits "),
+            Ensures => w.write("ensures "),
+            Requires => w.write("requires "),
+            Invariant(ty_params) => {
+                w.write("invariant");
+                ty_params.ast_debug(w);
+                w.write(" ")
+            }
+            InvariantUpdate(ty_params) => {
+                w.write("invariant");
+                ty_params.ast_debug(w);
+                w.write(" update ")
+            }
+            Axiom(ty_params) => {
+                w.write("axiom");
+                ty_params.ast_debug(w);
+                w.write(" ")
+            }
+        }
+    }
+}
+
 impl AstDebug for SpecBlockMember_ {
     fn ast_debug(&self, w: &mut AstWriter) {
         match self {
             SpecBlockMember_::Condition {
                 kind,
-                type_parameters,
                 properties: _,
                 exp,
                 additional_exps,
             } => {
                 kind.ast_debug(w);
-                type_parameters.ast_debug(w);
                 exp.ast_debug(w);
                 w.list(additional_exps, ",", |w, e| {
                     e.ast_debug(w);

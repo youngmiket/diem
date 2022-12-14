@@ -4,6 +4,7 @@ version = "0.8.0"
 [system-tests]
 smoke-test = { path = "smoke-test" }
 jsonrpc-integration-tests = { path = "json-rpc/integration-tests" }
+compatibility-test = { path = "testsuite/compatibility-test" }
 
 [cargo.sccache]
 bucket = "ci-artifacts.diem.com"
@@ -42,6 +43,10 @@ allowed = [
     "clippy::bool-assert-comparison",
     "clippy::needless-collect",
     "clippy::enum-variant-names",
+    "clippy::derive_partial_eq_without_eq",
+    "clippy::map-flatten",
+    "clippy::format-push-string",
+    "clippy::unwrap-or-else-default",
 ]
 warn = [
     "clippy::wildcard_dependencies",
@@ -179,6 +184,7 @@ members = [
     "bytecode-verifier-tests",
     "cli",
     "cluster-test",
+    "compatibility-test",
     "diem-documentation-tool",
     "diem-e2e-tests-replay",
     "diem-fuzz",

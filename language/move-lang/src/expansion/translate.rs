@@ -5,7 +5,6 @@ use crate::{
     diag,
     diagnostics::Diagnostic,
     expansion::{
-        address_map::build_address_map,
         aliases::{AliasMap, AliasSet},
         ast::{self as E, Address, Fields, ModuleIdent, ModuleIdent_, SpecId},
         byte_string, hex_string,
@@ -31,7 +30,6 @@ use super::aliases::{AliasMapBuilder, OldAliasMap};
 
 type ModuleMembers = BTreeMap<Name, ModuleMemberKind>;
 struct Context<'env> {
-    address_mapping: UniqueMap<Name, Option<Spanned<AddressBytes>>>,
     module_members: UniqueMap<ModuleIdent, ModuleMembers>,
     address: Option<Address>,
     aliases: AliasMap,
@@ -43,11 +41,9 @@ struct Context<'env> {
 impl<'env> Context<'env> {
     fn new(
         compilation_env: &'env mut CompilationEnv,
-        address_mapping: UniqueMap<Name, Option<Spanned<AddressBytes>>>,
         module_members: UniqueMap<ModuleIdent, ModuleMembers>,
     ) -> Self {
         Self {
-            address_mapping,
             module_members,
             env: compilation_env,
             address: None,
@@ -98,28 +94,19 @@ pub fn program(
     pre_compiled_lib: Option<&FullyCompiledProgram>,
     prog: P::Program,
 ) -> E::Program {
-    let address_mapping = build_address_map(compilation_env, pre_compiled_lib, &prog);
     let module_members = {
         let mut members = UniqueMap::new();
         all_module_members(
             compilation_env,
-            &address_mapping,
             &mut members,
             true,
             &prog.source_definitions,
         );
-        all_module_members(
-            compilation_env,
-            &address_mapping,
-            &mut members,
-            true,
-            &prog.lib_definitions,
-        );
+        all_module_members(compilation_env, &mut members, true, &prog.lib_definitions);
         if let Some(pre_compiled) = pre_compiled_lib {
             assert!(pre_compiled.parser.source_definitions.is_empty());
             all_module_members(
                 compilation_env,
-                &address_mapping,
                 &mut members,
                 false,
                 &pre_compiled.parser.lib_definitions,
@@ -128,7 +115,7 @@ pub fn program(
         members
     };
 
-    let mut context = Context::new(compilation_env, address_mapping, module_members);
+    let mut context = Context::new(compilation_env, module_members);
 
     let mut module_map = UniqueMap::new();
     let mut scripts = vec![];
@@ -174,10 +161,9 @@ pub fn program(
         keyed
     };
 
-    super::unique_modules_after_mapping::verify(context.env, &context.address_mapping, &module_map);
+    super::unique_modules_after_mapping::verify(context.env, &module_map);
     super::dependency_ordering::verify(context.env, &mut module_map, &mut scripts);
     E::Program {
-        addresses: context.address_mapping,
         modules: module_map,
         scripts,
     }
@@ -210,36 +196,43 @@ fn definition(
     }
 }
 
-fn unbound_address_error(suggest_declaration: bool, loc: Loc, n: &Name) -> Diagnostic {
-    let mut msg = format!("Unbound address '{}'", n);
+fn address_without_value_error(suggest_declaration: bool, loc: Loc, n: &Name) -> Diagnostic {
+    let mut msg = format!("address '{}' is not assigned a value", n);
     if suggest_declaration {
-        msg = format!("{}. Try declaring it with 'address {};'", msg, n)
+        msg = format!(
+            "{}. Try assigning it a value when calling the compiler",
+            msg,
+        )
     }
-    diag!(NameResolution::UnboundAddress, (loc, msg))
+    diag!(NameResolution::AddressWithoutValue, (loc, msg))
 }
 
 // Access a top level address as declared, not affected by any aliasing/shadowing
 fn address(context: &mut Context, suggest_declaration: bool, ln: P::LeadingNameAccess) -> Address {
-    address_impl(
-        context.env,
-        &context.address_mapping,
-        suggest_declaration,
-        ln,
-    )
+    address_impl(context.env, suggest_declaration, ln)
 }
 
 fn address_impl(
     compilation_env: &mut CompilationEnv,
-    address_mapping: &UniqueMap<Name, Option<Spanned<AddressBytes>>>,
     suggest_declaration: bool,
     sp!(loc, ln_): P::LeadingNameAccess,
 ) -> Address {
     match ln_ {
         P::LeadingNameAccess_::AnonymousAddress(bytes) => Address::Anonymous(sp(loc, bytes)),
         P::LeadingNameAccess_::Name(n) => {
-            if address_mapping.get(&n).is_none() {
-                compilation_env.add_diag(unbound_address_error(suggest_declaration, loc, &n));
+            if n.value == ModuleName::SELF_NAME {
+                compilation_env.add_diag(diag!(
+                        NameResolution::ReservedName,
+                        (loc, format!("Invalid named address '{0}'. '{0}' is restricted and cannot be used to name an address", ModuleName::SELF_NAME))
+                ))
+            } else if compilation_env
+                .named_address_mapping()
+                .get(&n.value)
+                .is_none()
+            {
+                compilation_env.add_diag(address_without_value_error(suggest_declaration, loc, &n));
             }
+
             Address::Named(n)
         }
     }
@@ -537,7 +530,6 @@ fn attribute_value(
 
 fn all_module_members<'a>(
     compilation_env: &mut CompilationEnv,
-    address_mapping: &UniqueMap<Name, Option<Spanned<AddressBytes>>>,
     members: &mut UniqueMap<ModuleIdent, ModuleMembers>,
     always_add: bool,
     defs: impl IntoIterator<Item = &'a P::Definition>,
@@ -548,7 +540,6 @@ fn all_module_members<'a>(
                 let addr = match &m.address {
                     Some(a) => address_impl(
                         compilation_env,
-                        address_mapping,
                         /* suggest_declaration */ true,
                         a.clone(),
                     ),
@@ -560,7 +551,6 @@ fn all_module_members<'a>(
             P::Definition::Address(addr_def) => {
                 let addr = address_impl(
                     compilation_env,
-                    address_mapping,
                     /* suggest_declaration */ false,
                     addr_def.addr.clone(),
                 );
@@ -1125,21 +1115,63 @@ fn spec_target(context: &mut Context, sp!(loc, pt): P::SpecBlockTarget) -> E::Sp
     sp(loc, et)
 }
 
+fn spec_condition_kind(
+    context: &mut Context,
+    sp!(loc, kind): P::SpecConditionKind,
+) -> (E::SpecConditionKind, Option<OldAliasMap>) {
+    let (kind_, aliases_opt) = match kind {
+        P::SpecConditionKind_::Assert => (E::SpecConditionKind_::Assert, None),
+        P::SpecConditionKind_::Assume => (E::SpecConditionKind_::Assume, None),
+        P::SpecConditionKind_::Decreases => (E::SpecConditionKind_::Decreases, None),
+        P::SpecConditionKind_::AbortsIf => (E::SpecConditionKind_::AbortsIf, None),
+        P::SpecConditionKind_::AbortsWith => (E::SpecConditionKind_::AbortsWith, None),
+        P::SpecConditionKind_::SucceedsIf => (E::SpecConditionKind_::SucceedsIf, None),
+        P::SpecConditionKind_::Modifies => (E::SpecConditionKind_::Modifies, None),
+        P::SpecConditionKind_::Emits => (E::SpecConditionKind_::Emits, None),
+        P::SpecConditionKind_::Ensures => (E::SpecConditionKind_::Ensures, None),
+        P::SpecConditionKind_::Requires => (E::SpecConditionKind_::Requires, None),
+        P::SpecConditionKind_::Invariant(pty_params) => {
+            let ety_params = type_parameters(context, pty_params);
+            let old_aliases = context
+                .aliases
+                .shadow_for_type_parameters(ety_params.iter().map(|(name, _)| name));
+            (
+                E::SpecConditionKind_::Invariant(ety_params),
+                Some(old_aliases),
+            )
+        }
+        P::SpecConditionKind_::InvariantUpdate(pty_params) => {
+            let ety_params = type_parameters(context, pty_params);
+            let old_aliases = context
+                .aliases
+                .shadow_for_type_parameters(ety_params.iter().map(|(name, _)| name));
+            (
+                E::SpecConditionKind_::InvariantUpdate(ety_params),
+                Some(old_aliases),
+            )
+        }
+        P::SpecConditionKind_::Axiom(pty_params) => {
+            let ety_params = type_parameters(context, pty_params);
+            let old_aliases = context
+                .aliases
+                .shadow_for_type_parameters(ety_params.iter().map(|(name, _)| name));
+            (E::SpecConditionKind_::Axiom(ety_params), Some(old_aliases))
+        }
+    };
+    (sp(loc, kind_), aliases_opt)
+}
+
 fn spec_member(context: &mut Context, sp!(loc, pm): P::SpecBlockMember) -> E::SpecBlockMember {
     use E::SpecBlockMember_ as EM;
     use P::SpecBlockMember_ as PM;
     let em = match pm {
         PM::Condition {
-            kind,
-            type_parameters: pty_params,
+            kind: pkind,
             properties: pproperties,
             exp,
             additional_exps,
         } => {
-            let type_parameters = type_parameters(context, pty_params);
-            let old_aliases = context
-                .aliases
-                .shadow_for_type_parameters(type_parameters.iter().map(|(name, _)| name));
+            let (kind, old_aliases_opt) = spec_condition_kind(context, pkind);
             let properties = pproperties
                 .into_iter()
                 .map(|p| pragma_property(context, p))
@@ -1149,10 +1181,12 @@ fn spec_member(context: &mut Context, sp!(loc, pm): P::SpecBlockMember) -> E::Sp
                 .into_iter()
                 .map(|e| exp_(context, e))
                 .collect();
-            context.set_to_outer_scope(old_aliases);
+            match old_aliases_opt {
+                None => (),
+                Some(old_aliases) => context.set_to_outer_scope(old_aliases),
+            }
             EM::Condition {
                 kind,
-                type_parameters,
                 properties,
                 exp,
                 additional_exps,
