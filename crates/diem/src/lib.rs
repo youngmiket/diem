@@ -13,6 +13,9 @@ pub mod node;
 
 use clap::Parser;
 
+pub mod client_proxy;
+pub mod diem_client;
+
 // Command Line Interface (CLI) for interacting with the Diem blockchain
 #[derive(Parser)]
 #[clap(name = "diem", author, version, propagate_version = true)]

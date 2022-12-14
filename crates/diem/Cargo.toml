@@ -29,3 +29,6 @@ swiss-knife = { path = "../../crates/swiss-knife" }
 rand = "0.8.3"
 diem-workspace-hack = { path = "../diem-workspace-hack" }
 home = "0.5.4"
+diem-wallet = { path = "../../testsuite/cli/diem-wallet" }
+
+bcs = "0.1.2"

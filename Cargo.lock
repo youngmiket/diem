@@ -1565,11 +1565,13 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "bcs",
  "clap 4.0.26",
  "diem-client",
  "diem-crypto",
  "diem-logger",
  "diem-types",
+ "diem-wallet",
  "diem-workspace-hack",
  "generate-key",
  "hex",
